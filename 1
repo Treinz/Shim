@@ -512,3 +512,250 @@ sqlite3.OperationalError: no such column: r.client_id
 sqlite3.OperationalError: no such column: r.status_id
 sqlite3.OperationalError: no such column: r.mechanic_id
 sqlite3.OperationalError: no such column: r.request_number
+
+import tkinter as tk
+from tkinter import messagebox, ttk
+import sqlite3
+from datetime import datetime
+
+# Создание/подключение к базе данных
+conn = sqlite3.connect('service_requests.db')
+c = conn.cursor()
+
+# Создание таблиц
+c.execute('''CREATE TABLE IF NOT EXISTS status (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             name TEXT UNIQUE NOT NULL
+             )''')
+
+c.execute('''CREATE TABLE IF NOT EXISTS users (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             fio TEXT NOT NULL,
+             phone TEXT NOT NULL,
+             login TEXT UNIQUE NOT NULL,
+             password TEXT NOT NULL,
+             type TEXT NOT NULL
+             )''')
+
+c.execute('''CREATE TABLE IF NOT EXISTS requests (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             request_number TEXT NOT NULL,
+             date_added TEXT NOT NULL,
+             car_type TEXT NOT NULL,
+             car_model TEXT NOT NULL,
+             problem_description TEXT NOT NULL,
+             client_id INTEGER NOT NULL,
+             status_id INTEGER NOT NULL,
+             mechanic_id INTEGER,
+             comments TEXT,
+             FOREIGN KEY (client_id) REFERENCES users(id),
+             FOREIGN KEY (status_id) REFERENCES status(id),
+             FOREIGN KEY (mechanic_id) REFERENCES users(id)
+             )''')
+
+c.execute('''CREATE TABLE IF NOT EXISTS comments (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             message TEXT NOT NULL,
+             master_id INTEGER NOT NULL,
+             request_id INTEGER NOT NULL,
+             FOREIGN KEY (master_id) REFERENCES users(id),
+             FOREIGN KEY (request_id) REFERENCES requests(id)
+             )''')
+
+# Инициализация таблицы статусов
+c.execute("INSERT OR IGNORE INTO status (name) VALUES ('Новая заявка'), ('В процессе ремонта'), ('Готова к выдаче')")
+conn.commit()
+
+# Основное окно приложения
+class ServiceApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Service Requests Management")
+
+        # Вкладки
+        self.notebook = ttk.Notebook(root)
+        self.notebook.pack(fill='both', expand=True)
+
+        # Вкладка добавления заявок
+        self.add_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.add_tab, text="Добавить заявку")
+        self.create_add_tab()
+
+        # Вкладка редактирования заявок
+        self.edit_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.edit_tab, text="Редактировать заявки")
+        self.create_edit_tab()
+
+        # Вкладка просмотра заявок
+        self.view_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.view_tab, text="Просмотр заявок")
+        self.create_view_tab()
+
+        # Вкладка статистики
+        self.stats_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.stats_tab, text="Статистика")
+        self.create_stats_tab()
+
+    def create_add_tab(self):
+        # Поля ввода данных
+        labels = ["Номер заявки", "Дата добавления", "Вид авто", "Модель авто", "Описание проблемы", "ФИО клиента", "Номер телефона", "Статус"]
+        self.entries = {}
+
+        for i, label in enumerate(labels):
+            lbl = tk.Label(self.add_tab, text=label)
+            lbl.grid(row=i, column=0, padx=10, pady=5, sticky=tk.W)
+            entry = tk.Entry(self.add_tab, width=40)
+            entry.grid(row=i, column=1, padx=10, pady=5)
+            self.entries[label] = entry
+
+        # Кнопка добавления заявки
+        self.add_button = tk.Button(self.add_tab, text="Добавить заявку", command=self.add_request)
+        self.add_button.grid(row=len(labels), column=1, pady=10)
+
+    def add_request(self):
+        # Сохранение заявки в базу данных
+        data = [self.entries[label].get() for label in self.entries]
+        client_fio = data[5]
+        client_phone = data[6]
+        
+        c.execute("SELECT id FROM users WHERE fio=? AND phone=?", (client_fio, client_phone))
+        client_id = c.fetchone()
+        
+        if not client_id:
+            messagebox.showerror("Ошибка", "Клиент не найден")
+            return
+        
+        client_id = client_id[0]
+        status_name = data[7]
+        c.execute("SELECT id FROM status WHERE name=?", (status_name,))
+        status_id = c.fetchone()
+        
+        if not status_id:
+            messagebox.showerror("Ошибка", "Статус не найден")
+            return
+        
+        status_id = status_id[0]
+        
+        c.execute("INSERT INTO requests (request_number, date_added, car_type, car_model, problem_description, client_id, status_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  (data[0], data[1], data[2], data[3], data[4], client_id, status_id))
+        conn.commit()
+        messagebox.showinfo("Успех", "Заявка добавлена!")
+        for entry in self.entries.values():
+            entry.delete(0, tk.END)
+
+    def create_edit_tab(self):
+        # Поле для поиска заявки по номеру
+        self.search_entry = tk.Entry(self.edit_tab, width=40)
+        self.search_entry.grid(row=0, column=0, padx=10, pady=10)
+        self.search_button = tk.Button(self.edit_tab, text="Поиск", command=self.search_request)
+        self.search_button.grid(row=0, column=1, padx=10, pady=10)
+
+        # Поля для редактирования заявки
+        self.edit_entries = {}
+        labels = ["Номер заявки", "Дата добавления", "Вид авто", "Модель авто", "Описание проблемы", "ФИО клиента", "Номер телефона", "Статус", "Механик", "Комментарии"]
+        for i, label in enumerate(labels):
+            lbl = tk.Label(self.edit_tab, text=label)
+            lbl.grid(row=i+1, column=0, padx=10, pady=5, sticky=tk.W)
+            entry = tk.Entry(self.edit_tab, width=40)
+            entry.grid(row=i+1, column=1, padx=10, pady=5)
+            self.edit_entries[label] = entry
+
+        # Кнопка сохранения изменений
+        self.save_button = tk.Button(self.edit_tab, text="Сохранить изменения", command=self.save_changes)
+        self.save_button.grid(row=len(labels)+1, column=1, pady=10)
+
+    def search_request(self):
+        request_number = self.search_entry.get()
+        c.execute("SELECT r.request_number, r.date_added, r.car_type, r.car_model, r.problem_description, u.fio, u.phone, s.name, m.fio, r.comments "
+                  "FROM requests r "
+                  "JOIN users u ON r.client_id = u.id "
+                  "JOIN status s ON r.status_id = s.id "
+                  "LEFT JOIN users m ON r.mechanic_id = m.id "
+                  "WHERE r.request_number=?", (request_number,))
+        request = c.fetchone()
+        if request:
+            for i, label in enumerate(self.edit_entries):
+                self.edit_entries[label].delete(0, tk.END)
+                self.edit_entries[label].insert(0, request[i])
+        else:
+            messagebox.showerror("Ошибка", "Заявка не найдена")
+
+    def save_changes(self):
+        request_number = self.edit_entries["Номер заявки"].get()
+        data = [self.edit_entries[label].get() for label in self.edit_entries]
+
+        # Find the client ID
+        c.execute("SELECT id FROM users WHERE fio=? AND phone=?", (data[5], data[6]))
+        client_id = c.fetchone()
+        if not client_id:
+            messagebox.showerror("Ошибка", "Клиент не найден")
+            return
+        client_id = client_id[0]
+
+        # Find the status ID
+        c.execute("SELECT id FROM status WHERE name=?", (data[7],))
+        status_id = c.fetchone()
+        if not status_id:
+            messagebox.showerror("Ошибка", "Статус не найден")
+            return
+        status_id = status_id[0]
+
+        # Find the mechanic ID
+        c.execute("SELECT id FROM users WHERE fio=?", (data[8],))
+        mechanic_id = c.fetchone()
+        if mechanic_id:
+            mechanic_id = mechanic_id[0]
+        else:
+            mechanic_id = None
+
+        # Update the request
+        c.execute("UPDATE requests SET request_number=?, date_added=?, car_type=?, car_model=?, problem_description=?, client_id=?, status_id=?, mechanic_id=?, comments=? WHERE request_number=?", 
+                  (data[0], data[1], data[2], data[3], data[4], client_id, status_id, mechanic_id, data[9], request_number))
+        conn.commit()
+        messagebox.showinfo("Успех", "Изменения сохранены")
+
+    def create_view_tab(self):
+        self.requests_tree = ttk.Treeview(self.view_tab, columns=("number", "date", "type", "model", "description", "client", "phone", "status", "mechanic", "comments"), show="headings")
+        for col in self.requests_tree["columns"]:
+            self.requests_tree.heading(col, text=col)
+            self.requests_tree.column(col, width=100)
+        self.requests_tree.pack(fill="both", expand=True)
+        self.load_requests()
+
+    def load_requests(self):
+        for row in self.requests_tree.get_children():
+            self.requests_tree.delete(row)
+        c.execute("SELECT r.request_number, r.date_added, r.car_type, r.car_model, r.problem_description, u.fio, u.phone, s.name, m.fio, r.comments "
+                  "FROM requests r "
+                  "JOIN users u ON r.client_id = u.id "
+                  "JOIN status s ON r.status_id = s.id "
+                  "LEFT JOIN users m ON r.mechanic_id = m.id")
+        for row in c.fetchall():
+            self.requests_tree.insert("", "end", values=row)
+
+    def create_stats_tab(self):
+        self.stats_text = tk.Text(self.stats_tab, width=100, height=20)
+        self.stats_text.pack(fill="both", expand=True)
+        self.load_stats()
+
+    def load_stats(self):
+        # Подсчет количества заявок
+        c.execute("SELECT COUNT(*) FROM requests")
+        total_requests = c.fetchone()[0]
+
+        # Подсчет заявок по статусам
+        c.execute("SELECT s.name, COUNT(*) FROM requests r JOIN status s ON r.status_id = s.id GROUP BY r.status_id")
+        status_counts = c.fetchall()
+
+        # Формирование статистики
+        stats = f"Всего заявок: {total_requests}\n\n"
+        stats += "Заявки по статусам:\n"
+        for status, count in status_counts:
+            stats += f"{status}: {count}\n"
+
+        self.stats_text.insert(tk.END, stats)
+
+# Запуск приложения
+root = tk.Tk()
+app = ServiceApp(root)
+root.mainloop()
