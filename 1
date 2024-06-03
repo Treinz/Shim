@@ -139,163 +139,6 @@ class ServiceApp:
         self.stats_text.pack(fill="both", expand=True)
         self.load_stats()
 
-# Запуск приложения
-root = tk.Tk()
-app = ServiceApp(root)
-root.mainloop()
-
-Traceback (most recent call last):
-  in <module>
-    app = ServiceApp(root)
-          ^^^^^^^^^^^^^^^^
-  in __init__
-    self.create_stats_tab()
- in create_stats_tab
-    self.load_stats()
-    ^^^^^^^^^^^^^^^
-AttributeError: 'ServiceApp' object has no attribute 'load_stats'
-
-import tkinter as tk
-from tkinter import messagebox, ttk
-import sqlite3
-from datetime import datetime
-
-# Создание/подключение к базе данных
-conn = sqlite3.connect('service_requests.db')
-c = conn.cursor()
-
-# Создание таблицы заявок
-c.execute('''CREATE TABLE IF NOT EXISTS requests (
-             id INTEGER PRIMARY KEY AUTOINCREMENT,
-             request_number TEXT,
-             date_added TEXT,
-             car_type TEXT,
-             car_model TEXT,
-             problem_description TEXT,
-             client_name TEXT,
-             phone_number TEXT,
-             status TEXT,
-             mechanic TEXT,
-             comments TEXT
-             )''')
-conn.commit()
-
-# Основное окно приложения
-class ServiceApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Service Requests Management")
-
-        # Вкладки
-        self.notebook = ttk.Notebook(root)
-        self.notebook.pack(fill='both', expand=True)
-
-        # Вкладка добавления заявок
-        self.add_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.add_tab, text="Добавить заявку")
-        self.create_add_tab()
-
-        # Вкладка редактирования заявок
-        self.edit_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.edit_tab, text="Редактировать заявки")
-        self.create_edit_tab()
-
-        # Вкладка просмотра заявок
-        self.view_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.view_tab, text="Просмотр заявок")
-        self.create_view_tab()
-
-        # Вкладка статистики
-        self.stats_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.stats_tab, text="Статистика")
-        self.create_stats_tab()
-
-    def create_add_tab(self):
-        # Поля ввода данных
-        labels = ["Номер заявки", "Дата добавления", "Вид авто", "Модель авто", "Описание проблемы", "ФИО клиента", "Номер телефона", "Статус"]
-        self.entries = {}
-
-        for i, label in enumerate(labels):
-            lbl = tk.Label(self.add_tab, text=label)
-            lbl.grid(row=i, column=0, padx=10, pady=5, sticky=tk.W)
-            entry = tk.Entry(self.add_tab, width=40)
-            entry.grid(row=i, column=1, padx=10, pady=5)
-            self.entries[label] = entry
-
-        # Кнопка добавления заявки
-        self.add_button = tk.Button(self.add_tab, text="Добавить заявку", command=self.add_request)
-        self.add_button.grid(row=len(labels), column=1, pady=10)
-
-    def add_request(self):
-        # Сохранение заявки в базу данных
-        data = [self.entries[label].get() for label in self.entries]
-        c.execute("INSERT INTO requests (request_number, date_added, car_type, car_model, problem_description, client_name, phone_number, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                  data)
-        conn.commit()
-        messagebox.showinfo("Успех", "Заявка добавлена!")
-        for entry in self.entries.values():
-            entry.delete(0, tk.END)
-
-    def create_edit_tab(self):
-        # Поле для поиска заявки по номеру
-        self.search_entry = tk.Entry(self.edit_tab, width=40)
-        self.search_entry.grid(row=0, column=0, padx=10, pady=10)
-        self.search_button = tk.Button(self.edit_tab, text="Поиск", command=self.search_request)
-        self.search_button.grid(row=0, column=1, padx=10, pady=10)
-
-        # Поля для редактирования заявки
-        self.edit_entries = {}
-        labels = ["Номер заявки", "Дата добавления", "Вид авто", "Модель авто", "Описание проблемы", "ФИО клиента", "Номер телефона", "Статус", "Механик", "Комментарии"]
-        for i, label in enumerate(labels):
-            lbl = tk.Label(self.edit_tab, text=label)
-            lbl.grid(row=i+1, column=0, padx=10, pady=5, sticky=tk.W)
-            entry = tk.Entry(self.edit_tab, width=40)
-            entry.grid(row=i+1, column=1, padx=10, pady=5)
-            self.edit_entries[label] = entry
-
-        # Кнопка сохранения изменений
-        self.save_button = tk.Button(self.edit_tab, text="Сохранить изменения", command=self.save_changes)
-        self.save_button.grid(row=len(labels)+1, column=1, pady=10)
-
-    def search_request(self):
-        request_number = self.search_entry.get()
-        c.execute("SELECT * FROM requests WHERE request_number=?", (request_number,))
-        request = c.fetchone()
-        if request:
-            for i, label in enumerate(self.edit_entries):
-                self.edit_entries[label].delete(0, tk.END)
-                self.edit_entries[label].insert(0, request[i+1])
-        else:
-            messagebox.showerror("Ошибка", "Заявка не найдена")
-
-    def save_changes(self):
-        request_number = self.edit_entries["Номер заявки"].get()
-        data = [self.edit_entries[label].get() for label in self.edit_entries]
-        data.append(request_number)
-        c.execute("UPDATE requests SET request_number=?, date_added=?, car_type=?, car_model=?, problem_description=?, client_name=?, phone_number=?, status=?, mechanic=?, comments=? WHERE request_number=?", data)
-        conn.commit()
-        messagebox.showinfo("Успех", "Изменения сохранены")
-
-    def create_view_tab(self):
-        self.requests_tree = ttk.Treeview(self.view_tab, columns=("number", "date", "type", "model", "description", "client", "phone", "status", "mechanic", "comments"), show="headings")
-        for col in self.requests_tree["columns"]:
-            self.requests_tree.heading(col, text=col)
-            self.requests_tree.column(col, width=100)
-        self.requests_tree.pack(fill="both", expand=True)
-        self.load_requests()
-
-    def load_requests(self):
-        for row in self.requests_tree.get_children():
-            self.requests_tree.delete(row)
-        c.execute("SELECT * FROM requests")
-        for row in c.fetchall():
-            self.requests_tree.insert("", "end", values=row[1:])
-
-    def create_stats_tab(self):
-        self.stats_text = tk.Text(self.stats_tab, width=100, height=20)
-        self.stats_text.pack(fill="both", expand=True)
-        self.load_stats()
-
     def load_stats(self):
         # Подсчет количества заявок
         c.execute("SELECT COUNT(*) FROM requests")
@@ -317,3 +160,41 @@ class ServiceApp:
 root = tk.Tk()
 app = ServiceApp(root)
 root.mainloop()
+
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "C:\Users\exam\AppData\Local\Programs\Python\Python312\Lib\tkinter\__init__.py", line 1967, in __call__
+    return self.func(*args)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\exam\PycharmProjects\pythonProject1\.venv\Scripts\activate_this.py", line 110, in search_request
+    self.edit_entries[label].insert(0, request[i+1])
+  File "C:\Users\exam\AppData\Local\Programs\Python\Python312\Lib\tkinter\__init__.py", line 3145, in insert
+    self.tk.call(self._w, 'insert', index, string)
+_tkinter.TclError: wrong # args: should be ".!notebook.!frame2.!entry10 insert index text"
+
+inputDataRequests
+requestID;startDate;carType;carModel;problemDescryption;requestStatus;completionDate;repairParts;masterID;clientID
+1;2023-06-06;Легковая;Hyundai Avante (CN7);Отказали тормоза.;В процессе ремонта;null;;2;7
+2;2023-05-05;Легковая;Nissan 180SX ;Отказали тормоза.;В процессе ремонта;null;;3;8
+3;2022-07-07;Легковая;Toyota 2000GT ;В салоне пахнет бензином.;Готова к выдаче;2023-01-01;;3;9
+4;2023-08-02;Грузовая;Citroen Berlingo (B9);Руль плохо крутится.;Новая заявка;null;;null;8
+5;2023-08-02;Грузовая;УАЗ 2360 ;Руль плохо крутится.;Новая заявка;null;;null;9
+
+inputDataComments
+commentID;message;masterID;requestID
+1;Очень странно.;2;1
+2;Будем разбираться!;3;2
+3;Будем разбираться!;3;3
+
+inputDataUsers
+userID;fio;phone;login;password;type
+1;Белов Александр Давидович;89210563128;login1;pass1;Менеджер
+2;Харитонова Мария Павловна;89535078985;login2;pass2;Автомеханик
+3;Марков Давид Иванович;89210673849;login3;pass3;Автомеханик
+4;Громова Анна Семёновна;89990563748;login4;pass4;Оператор
+5;Карташова Мария Данииловна;89994563847;login5;pass5;Оператор
+6;Касаткин Егор Львович;89219567849;login11;pass11;Заказчик
+7;Ильина Тамара Даниловна;89219567841;login12;pass12;Заказчик
+8;Елисеева Юлиана Алексеевна;89219567842;login13;pass13;Заказчик
+9;Никифорова Алиса Тимофеевна;89219567843;login14;pass14;Заказчик
+10;Васильев Али Евгеньевич;89219567844;login15;pass15;Автомеханик
