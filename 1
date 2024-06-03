@@ -498,3 +498,14 @@ root = tk.Tk()
 app = ServiceApp(root)
 root.mainloop()
 
+Traceback (most recent call last):
+  in <module>
+    app = ServiceApp(root)
+          ^^^^^^^^^^^^^^^^
+  in __init__
+    self.create_view_tab()
+  in create_view_tab
+    self.load_requests()
+  in load_requests
+    c.execute(
+sqlite3.OperationalError: no such column: r.client_id
